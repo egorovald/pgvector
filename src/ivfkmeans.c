@@ -252,6 +252,67 @@ ComputeNewCenters(VectorArray samples, float *agg, VectorArray newCenters, int *
 }
 
 /*
+* LE
+* Simple K-means
+*/
+static void
+SimpleKmeans(Relation index, VectorArray samples, VectorArray centers, const IvfflatTypeInfo * typeInfo)
+{
+	/* It is debugging message */
+	
+	ereport(ERROR,
+				(errcode(ERRCODE_PROGRAM_LIMIT_EXCEEDED),
+				 errmsg("Simple K-means is running")));
+	/*
+	int k = centers.length;
+	int dim = samples.dim;
+	int *assignments = (int *)malloc(samples.length * sizeof(int));
+	int changed;
+	
+	// Initialize assignments
+	for (int i = 0; i < samples.length; i++)
+	    {
+	        assignments[i] = -1;
+	    }
+	
+	do
+	    {
+	        changed = 0;
+	
+	        // Assignment step
+	        for (int i = 0; i < samples.length; i++)
+	        {
+	            double min_dist = DBL_MAX;
+	            int best_cluster = -1;
+	
+	            for (int j = 0; j < k; j++)
+	            {
+	                double dist = euclidean_distance(samples[i], centers[j], dim);
+	                if (dist < min_dist)
+	                {
+	                    min_dist = dist;
+	                    best_cluster = j;
+	                }
+	            }
+	
+	            if (assignments[i] != best_cluster)
+	            {
+	                assignments[i] = best_cluster;
+	                changed = 1;
+	            }
+	        }
+	
+	        // Update step
+	        update_centroids(samples, centers, assignments, k, dim);
+	
+	    } while (changed);
+	
+	    free(assignments);
+	*/	
+}
+
+
+/*
  * Use Elkan for performance. This requires distance function to satisfy triangle inequality.
  *
  * We use L2 distance for L2 (not L2 squared like index scan)
@@ -574,7 +635,9 @@ IvfflatKmeans(Relation index, VectorArray samples, VectorArray centers, const Iv
 	if (samples->length == 0)
 		RandomCenters(index, centers, typeInfo);
 	else
-		ElkanKmeans(index, samples, centers, typeInfo);
+		//LE change to another k-means algorithm
+		//ElkanKmeans(index, samples, centers, typeInfo); //LE comment
+		SimpleKmeans(index, samples, centers, typeInfo);
 
 	CheckCenters(index, centers, typeInfo);
 
