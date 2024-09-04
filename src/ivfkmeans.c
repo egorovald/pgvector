@@ -12,6 +12,10 @@
 #include "utils/datum.h"
 #include "utils/memutils.h"
 #include "vector.h"
+#include "greedy.h"
+
+#include "limits.h"
+#include "unistd.h"
 
 /*
  * Initialize with kmeans++
@@ -258,15 +262,106 @@ ComputeNewCenters(VectorArray samples, float *agg, VectorArray newCenters, int *
 static void
 SimpleKmeans(Relation index, VectorArray samples, VectorArray centers, const IvfflatTypeInfo * typeInfo)
 {
-	/* It is debugging message */
+	FmgrInfo   *procinfo;
+	FmgrInfo   *normprocinfo;
+	Oid			collation;
+	int			dimensions = centers->dim;
+	int			numCenters = centers->maxlen;
+	int			numSamples = samples->length;
+
+	int		   *centerCounts;
+	int		   *closestCenters;
+	VectorArray newCenters;
+	float	   *agg;	
+
+	float	   *lowerBound;
+	/* Calculate allocation sizes */
+	Size		samplesSize = VECTOR_ARRAY_SIZE(samples->maxlen, samples->itemsize);
+	Size		centersSize = VECTOR_ARRAY_SIZE(centers->maxlen, centers->itemsize);
+	Size		lowerBoundSize = sizeof(float) * numSamples * numCenters;
+	Size		centerCountsSize = sizeof(int) * numCenters;
+	Size		closestCentersSize = sizeof(int) * numSamples;
+	Size		newCentersSize = VECTOR_ARRAY_SIZE(numCenters, centers->itemsize);
+	Size		aggSize = sizeof(float) * (int64) numCenters * dimensions;
+
+
+	/* Calculate total size */
+	//Size		totalSize = samplesSize + centersSize + newCentersSize + aggSize + centerCountsSize + closestCentersSize + lowerBoundSize + upperBoundSize + sSize + halfcdistSize + newcdistSize;
+	Size		totalSize = samplesSize + centersSize + newCentersSize + aggSize                                         + lowerBoundSize;
+
+	/* Check memory requirements */
+	/* Add one to error message to ceil */
 	
-	ereport(ERROR,
+	if (totalSize > (Size) maintenance_work_mem * 1024L)
+		ereport(ERROR,
 				(errcode(ERRCODE_PROGRAM_LIMIT_EXCEEDED),
-				 errmsg("Simple K-means is running")));
+				 errmsg("memory required is %zu MB, maintenance_work_mem is %d MB",
+						totalSize / (1024 * 1024) + 1, maintenance_work_mem / 1024)));
+     
+	/* Ensure indexing does not overflow */
+	if (numCenters * numCenters > INT_MAX)
+		elog(ERROR, "Indexing overflow detected. Please report a bug.");
+
+	/* Set support functions */
+	procinfo = index_getprocinfo(index, 1, IVFFLAT_KMEANS_DISTANCE_PROC);
+	normprocinfo = IvfflatOptionalProcInfo(index, IVFFLAT_KMEANS_NORM_PROC);
+	collation = index->rd_indcollation[0];
+
+
+	///* Allocate space */
+	///* Use float instead of double to save memory */
+	//agg = palloc(aggSize);
+	//centerCounts = palloc(centerCountsSize);
+	//closestCenters = palloc(closestCentersSize);
+	//lowerBound = palloc_extended(lowerBoundSize, MCXT_ALLOC_HUGE);
+
+#ifdef IVFFLAT_MEMORY
+	ShowMemoryUsage(MemoryContextGetParent(CurrentMemoryContext));
+#endif
+	/*Пока не отлажено*/
+	//Initialize with kmeans++
+	/* Pick initial centers */
+	//InitCenters(index, samples, centers, lowerBound);
+	//RandomCenters(index, centers, typeInfo); //LE
+
+	/* Assign each x to its closest initial center c(x) = argmin d(x,c) */
+	//for (int64 j = 0; j < numSamples; j++)
+	//{
+	//	float		minDistance = FLT_MAX;
+	//	int			closestCenter = 0;
+
+	//	/* Find closest center */
+	//	for (int64 k = 0; k < numCenters; k++)
+	//	{
+	//		/* TODO Use Lemma 1 in k-means++ initialization */
+	//		//float		distance = lowerBound[j * numCenters + k]; //LE comment
+	//		//float distance = euclidean_distance(samples[i], centers[j], dim);
+	//
+	//		//LE get next center
+	//		Datum		vec = PointerGetDatum(VectorArrayGet(centers, j));
+	//		float distance = DatumGetFloat8(FunctionCall2Coll(procinfo, collation, vec, PointerGetDatum(VectorArrayGet(centers, k))));
+
+	//		if (distance < minDistance)
+	//		{
+	//			minDistance = distance;
+	//			closestCenter = k;
+	//		}
+	//	}
+	//	//upperBound[j] = minDistance; //LE comment
+	//	closestCenters[j] = closestCenter;
+	//}
+
+	///* Initialize new centers */
+	//newCenters = VectorArrayInit(numCenters, dimensions, centers->itemsize);
+	//newCenters->length = numCenters;
+
+	///* It is debugging message */
+	
+	elog(INFO, "Simple K-means is running");			 
 	/*
-	int k = centers.length;
-	int dim = samples.dim;
-	int *assignments = (int *)malloc(samples.length * sizeof(int));
+	int k = centers.length; //numSamples
+	int dim = samples.dim;  //dimensions
+	int *assignments = (int *)malloc(samples.length * sizeof(int));  //samplesize ?
 	int changed;
 	
 	// Initialize assignments
@@ -309,6 +404,234 @@ SimpleKmeans(Relation index, VectorArray samples, VectorArray centers, const Ivf
 	
 	    free(assignments);
 	*/	
+}
+
+void UploadSamples(Relation index, VectorArray samples, const char *filename, int num_samples)
+{
+	char abs_path[PATH_MAX];
+	char	   id_str[10];
+	//char	   *ptr;
+
+	elog(INFO, "UploadSamples is running");
+
+	if (realpath(filename, abs_path)==NULL)
+	{
+        elog(ERROR,"Failed to get absolute path");
+        exit(EXIT_FAILURE);		
+	}
+	elog(INFO,"Absolute path: %s\n", abs_path);
+	
+    FILE *file = fopen(abs_path, "w");
+    if (!file)
+    {
+        elog(ERROR,"Failed to open file");
+        exit(EXIT_FAILURE);
+    }
+
+	//buf = (char *) palloc(FLOAT_SHORTEST_DECIMAL_LEN * dim + 2);
+	//ptr = buf;
+
+    // Запись заголовка
+    fprintf(file, "Index");
+    for (int i = 0; i < samples->dim; i++)
+    {
+        fprintf(file, ",Feature%d", i + 1);
+    }
+    fprintf(file, "\n");
+
+    // Запись данных
+    for (int i = 0; i < num_samples && i < samples->length; i++)
+    {
+        //fprintf(file, "%d", index[i]); // TODO Запись индекса
+		fprintf(file, "%d", i); // Отладка вместо индекса пока записываем счетчик
+		//Получаем элемент из массива
+		//Datum		vec = PointerGetDatum(VectorArrayGet(samples, i));
+		//(char*)       vec = VectorArrayGet(samples, i);
+		//Datum		value = PointerGetDatum(VectorArrayGet(samples, i));
+		//pointer value = VectorArrayGet(samples, i);
+		//Datum		sample = PointerGetDatum(PG_DETOAST_DATUM(value[0]));
+		//Vector* vec = DatumGetVector(PointerGetDatum(VectorArrayGet(samples, i)));
+		Vector* vec = PG_DETOAST_DATUM(PointerGetDatum(VectorArrayGet(samples, i)));
+		//char	   *out = DatumGetPointer(DirectFunctionCall1(vector_out, PointerGetDatum(VectorArrayGet(samples, i))));
+		//int		    dim = samples->dim;
+        //for (int j = 0; j < dim; j++)
+        //{
+			//char *  elem = sample->items[j * samples->itemsize];
+            //fprintf(file, ",%s", sample->x[i]); // Запись значений образцов
+			//fprintf(file, ",%d", PG_DETOAST_DATUM(VectorArrayGet(samples, i)[0])); // Запись значений образцов
+			//int sz = VectorArrayGet(samples, i)->Size
+			//fprintf(file, ",%d", DatumGetInt32(vec)); // Запись значений образцов
+			//fprintf(file, ",%d", VectorArrayGet(samples, i)[j]); // Запись значений образцов
+			//fprintf(file, ",%s", VectorArrayGet(samples, 0)[0]); // Запись значений образцов
+        //}
+		//fprintf(file, ",%s",DatumGetPointer(DirectFunctionCall1(vector_out, vec)))
+		snprintf(id_str, sizeof id_str, "%d", i);
+		//PrintVector(id_str,vec); //Вывод отладочной информации
+		fprintf(file, "%s", VectorToStr(vec));
+        fprintf(file, "\n");
+    }
+
+    fclose(file);
+}
+
+void LoadCenters(Relation index, VectorArray centers, const IvfflatTypeInfo * typeInfo, const char *filename)
+{
+	char 		abs_path[PATH_MAX];
+	char	   *ptr;
+	char	   *buf;
+	int 		i,j; 
+	int			dimensions = centers->dim;
+	int			numCenters = centers->maxlen;
+	int 		sscanf_res = 0; //результат выполнения чтения из строки
+	char       *id; //идентификатор образца из файла
+	char       *fl_number; //число, считанное из файла в виде строки
+	float       result;	   //результат парсинга строки в число типа float
+	//FmgrInfo   *normprocinfo = IvfflatOptionalProcInfo(index, IVFFLAT_KMEANS_NORM_PROC); //процедура нормализации
+	//Oid			collation; //индекс
+	VectorArray newCenters; //В этот массив первоначально загружаются векторы из файла
+	float	   *x = (float *) palloc(sizeof(float) * dimensions); //элементы вектора
+	char 		*line; //строка, считываемая из файла
+	char 		*stopstring; //разделитель элементов в строке файла
+	size_t len = 0; //используется при считывании строки
+    ssize_t read;   //результат считывания строки
+	
+	line = (char *) palloc(DOUBLE_SHORTEST_DECIMAL_LEN * dimensions + DOUBLE_SHORTEST_DECIMAL_LEN + dimensions+2);
+	id = (char*) palloc(DOUBLE_SHORTEST_DECIMAL_LEN);
+	fl_number = (char*) palloc(DOUBLE_SHORTEST_DECIMAL_LEN);
+
+	//Проверяем существование файла
+	if (realpath(filename, abs_path)==NULL)
+	{
+        elog(ERROR,"Failed to get absolute path");
+        exit(EXIT_FAILURE);		
+	}
+	elog(INFO,"Loading from file: %s\n", abs_path);
+	
+	//Открываем файл на чтение
+    FILE *file = fopen(abs_path, "r");
+    if (!file)
+    {
+        elog(ERROR,"Failed to open file");
+        exit(EXIT_FAILURE);
+    }
+
+	//Проверка количества записей в файле
+	//Подсчитываем количество строк
+	i  = 0;
+	while ((read = getline(&line, &len, file)) != -1) {
+		//Вывод отладочной информации
+        //elog(INFO,"Retrieved line of length %zu :\n", read);
+        //elog(INFO,"%s", line);
+		i++;
+    };
+	if ((i-1)!=(centers->length)){
+		//Первая строка - это заголовок 
+		elog(ERROR,"centers->length = %d, but retrieved %d vector lines from file",centers->length, i-1); //Вывод сообщения об ошибке
+	};
+
+	/* Initialize new centers */
+	newCenters = VectorArrayInit(numCenters, dimensions, centers->itemsize);
+	newCenters->length = numCenters;
+
+#ifdef IVFFLAT_MEMORY
+	ShowMemoryUsage(MemoryContextGetParent(CurrentMemoryContext));
+#endif	
+
+	newCenters->length = 0;
+	//Отладочная информация
+	//elog(INFO,"centers->length %d ", newCenters->length);
+	//elog(INFO,"centers->maxlen %d ", newCenters->maxlen);
+
+	rewind(file); //Устанавливаем указатель на начало файла
+	//Считываем первую строку из файла, это строка заголовка
+	read = getline(&line, &len, file);
+
+	/* Fill from file data */
+	while ((newCenters->length < newCenters->maxlen) && ((read = getline(&line, &len, file)) != -1))
+	{	
+		Pointer		center = VectorArrayGet(newCenters, newCenters->length);
+		elog(INFO, "Считана строка %s",line);
+		//удаляем символ новой строки
+		ptr = strchr( line, '\n' );
+    	if ( ptr ) *ptr = '\0';		
+		//считываем идентификатор вектора
+		sscanf_res = sscanf(line, "%[^'[']", id);
+		if (sscanf_res!=1)
+			{
+				elog(ERROR,"Не удалось считать идентификатор элемента из строки %s",line);
+			}
+		else
+			{
+				//TODO что делать с идентификатором вектора?
+				//отладочная информация
+				//elog(INFO,"sscanf_res=%d, id=%s", sscanf_res, id);
+			};
+		
+		for (i = 0; i < newCenters->dim; i++)
+		{
+			//позиционируемся на элементе
+			if (i==0){ //разбираем первый элемент вектора	
+					//Находим начало вектора данных (начинается и заканчивается символами [])		
+					if ( (ptr=strchr( line, '[' )) != NULL ) {
+        					ptr++; //нашли, //нашли, позиционируемся на первом символе
+							buf = ptr;
+    				} else {
+						//не нашли, возможно не в том формате файл данных
+						elog(ERROR,"Неверный формат файла, вектор данных должен быть заключен в квадратные скобки");
+    				};
+			}	
+			else {
+				//по разделителю (запятая) позиционируемся на следующее значение
+				if ( (ptr=strchr( buf, ',' )) != NULL){
+					ptr++; //нашли, позиционируемся на первом символе
+					buf = ptr;
+				}
+				else {
+						//не нашли, возможно не в том формате файл данных
+						elog(ERROR,"Неверный формат файла, элементы вектора данных должен быть разделены запятыми");
+    			};
+			}
+				
+			//разбираем текущий элемент								
+        	sscanf_res = sscanf( buf, "%[^,]", fl_number );
+			//отладочная информация
+			//elog(INFO,"разбираем строку %s", buf);
+			//elog(INFO,"sscanf_res=%d, elem=%s",sscanf_res, fl_number);
+
+			//Преобразуем считанное число в тип float
+			//TODO обработка результата
+      		result = strtof(fl_number, &stopstring);
+			elog(INFO,"x[%d] = %f", i, result);
+			//отладочная информация
+			//elog(INFO,"Converted the %s value to the value %f", fl_number, result);
+
+			//x[i] = (float) RandomDouble(); //отладка
+			//Присваиваем новое значение элементу массива новых центроидов
+			x[i] = result;
+		}
+		typeInfo->updateCenter(center, newCenters->dim, x);
+
+		newCenters->length++;
+		//отладочная информация
+		//elog(INFO,"new centers->length %d ", newCenters->length);
+	}
+
+	//Отладка. Проверяем, как загрузили
+	//Vector* vec = PG_DETOAST_DATUM(PointerGetDatum(VectorArrayGet(newCenters, 0)));
+	//PrintVector("0",vec);
+
+	//Update centers
+	for (j = 0; j < numCenters; j++)
+		VectorArraySet(centers, j, VectorArrayGet(newCenters, j));
+
+	//TODO Нужна ли нормализация?	
+	//if (normprocinfo != NULL)
+	//	NormCenters(typeInfo, collation, centers);
+
+	elog(INFO,"%d centers was loaded", centers->length);	
+
+    fclose(file);
+	free(line);
 }
 
 
@@ -635,9 +958,16 @@ IvfflatKmeans(Relation index, VectorArray samples, VectorArray centers, const Iv
 	if (samples->length == 0)
 		RandomCenters(index, centers, typeInfo);
 	else
-		//LE change to another k-means algorithm
-		//ElkanKmeans(index, samples, centers, typeInfo); //LE comment
-		SimpleKmeans(index, samples, centers, typeInfo);
+		{
+		ElkanKmeans(index, samples, centers, typeInfo); //LE comment
+		
+		//Тестовая выгрузка образцов во внешний файл
+		UploadSamples(index, centers,"/mnt/c/Users/sept_/huawei/pgvector/samples.csv",100);
+		//Тестовая загрузка образцов из внешнего файла
+		LoadCenters(index, centers, typeInfo, "/mnt/c/Users/sept_/huawei/pgvector/samples.csv");
+		//TODO LE change to another k-means algorithm	
+		//SimpleKmeans(index, samples, centers, typeInfo);	
+		}
 
 	CheckCenters(index, centers, typeInfo);
 

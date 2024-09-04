@@ -345,6 +345,17 @@ PrintVector(char *msg, Vector * vector)
 	pfree(out);
 }
 
+//LE
+/*
+ * Print vector - useful for debugging
+ */
+char*
+VectorToStr(Vector * vector)
+{
+	char	   *out = DatumGetPointer(DirectFunctionCall1(vector_out, PointerGetDatum(vector)));
+	return out;
+}
+
 /*
  * Convert type modifier
  */
@@ -1322,4 +1333,15 @@ sparsevec_to_vector(PG_FUNCTION_ARGS)
 		result->x[svec->indices[i]] = values[i];
 
 	PG_RETURN_POINTER(result);
+}
+
+//LE
+//тестовая функция
+FUNCTION_PREFIX PG_FUNCTION_INFO_V1(add_test);
+Datum 
+add_test(PG_FUNCTION_ARGS)
+{
+    int32 arg_a = PG_GETARG_INT32(0);
+    int32 arg_b = PG_GETARG_INT32(1);
+    PG_RETURN_INT32(arg_a + arg_b);
 }
