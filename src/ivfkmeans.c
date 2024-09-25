@@ -445,12 +445,6 @@ void UploadSamples(Relation index, VectorArray samples, const char *filename, in
         //fprintf(file, "%d", index[i]); // TODO Запись индекса
 		fprintf(file, "%d", i); // Отладка вместо индекса пока записываем счетчик
 		//Получаем элемент из массива
-		//Datum		vec = PointerGetDatum(VectorArrayGet(samples, i));
-		//(char*)       vec = VectorArrayGet(samples, i);
-		//Datum		value = PointerGetDatum(VectorArrayGet(samples, i));
-		//pointer value = VectorArrayGet(samples, i);
-		//Datum		sample = PointerGetDatum(PG_DETOAST_DATUM(value[0]));
-		//Vector* vec = DatumGetVector(PointerGetDatum(VectorArrayGet(samples, i)));
 		Vector* vec = PG_DETOAST_DATUM(PointerGetDatum(VectorArrayGet(samples, i)));
 		//char	   *out = DatumGetPointer(DirectFunctionCall1(vector_out, PointerGetDatum(VectorArrayGet(samples, i))));
 		//int		    dim = samples->dim;

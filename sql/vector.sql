@@ -892,3 +892,10 @@ CREATE OPERATOR CLASS sparsevec_l1_ops
 	OPERATOR 1 <+> (sparsevec, sparsevec) FOR ORDER BY float_ops,
 	FUNCTION 1 l1_distance(sparsevec, sparsevec),
 	FUNCTION 3 hnsw_sparsevec_support(internal);
+
+--Загрузка из файла .csv в массив центроидов
+CREATE FUNCTION load_centers(int, int)
+  RETURNS int
+AS 'MODULE_PATHNAME', 'load_centers_from_csv'
+LANGUAGE C STRICT;
+DROP FUNCTION sqrt(integer);

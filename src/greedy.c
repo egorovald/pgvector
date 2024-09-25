@@ -1,23 +1,17 @@
 #include "postgres.h"
 #include "fmgr.h"
 #include "vector.h"
+#include "ivfflat.h"
 
-//Функция выгрузки элементов в файл .CSV
-FUNCTION_PREFIX PG_FUNCTION_INFO_V1(upload_to_csv);
+//Функция загрузки элементов из файла .CSV в массив centers
+FUNCTION_PREFIX PG_FUNCTION_INFO_V1(load_centers_from_csv);
 Datum 
-upload_to_csv(PG_FUNCTION_ARGS)
+load_centers_from_csv(PG_FUNCTION_ARGS)
 {
-    int32 arg_a = PG_GETARG_INT32(0);
-    int32 arg_b = PG_GETARG_INT32(1);
-    PG_RETURN_INT32(arg_a + arg_b);
-}
-
-//тестовая функция
-FUNCTION_PREFIX PG_FUNCTION_INFO_V1(add_ab);
-Datum 
-add_ab(PG_FUNCTION_ARGS)
-{
-    int32 arg_a = PG_GETARG_INT32(0);
-    int32 arg_b = PG_GETARG_INT32(1);
-    PG_RETURN_INT32(arg_a + arg_b);
+    //Получаем полный путь к файлу в виде строки
+    VarChar *arg_a = PG_GETARG_VARCHAR_P(0);
+    //Вызываем функцию загрузки центров из файла .csv
+    LoadCenters(index, centers, typeInfo, "/mnt/c/Users/sept_/huawei/pgvector/samples.csv");
+    //Успешное завершение
+    PG_RETURN_INT32(0);
 }
